@@ -1,52 +1,49 @@
 "use client";
 
-function RouteSuggestionCard({ route, type, distance, fare}) {
-   
-   function showRouteAlert(){
-    alert(`Showing route: ${route}`);
-   }
-   
-    const typeImages = {
-        jeep: "/Icons/Jeep.svg",
-        ejeep: "/Icons/EJeepIcon.svg",
-        tricycle: "/Icons/TricycleIcon.svg",
-    };
-
-    return (
-    <div className="min-h-29.5 w-95 bg-white rounded-lg shadow-md flex items-center p-3 gap-2 m-2">
-
-        <img
-            src={typeImages[type.toLowerCase()]}
-            alt={`${type} Icon`}
-            className="w-25.75  h-24.25"
-        />
-
-        <div className="flex flex-col w-full">
-            <div>
-                <h2 className="font-extrabold text-[#CC553D]">{type}: {route}</h2>
-                <div className="flex flex-wrap gap-2">
-                    <h3 className="font-semibold text-[#003F48]">Distance: {distance}</h3>
-                    <h3 className="font-semibold text-[#003F48] ">Fare: {fare}</h3>
-                </div>
-            </div>
-
-            <div className="flex justify-end mt-2">
-            <button
-                className="bg-[#CC553D] text-white text-xs rounded-lg p-1.5 hover:bg-sky-500"
-                onClick={showRouteAlert}
-            >
-                <img
-                    src="/Icons/Map.svg"
-                    alt="Arrow Icon"
-                    className="w-4 h-4 inline-block ml-1 m-1"
-                />
-                Show Route
-            </button>
-            </div>
-
-        </div>
-    </div>
-    );
+interface RouteSuggestionCardProps {
+  type: string;
+  route: string;
+  distance: string;
+  fare: string;
+  animationDelay?: number;
 }
 
-export default RouteSuggestionCard;  
+export default function RouteSuggestionCard({
+  type,
+  route,
+  distance,
+  fare,
+  animationDelay = 0,
+}: RouteSuggestionCardProps) {
+  return (
+    <div
+      className="flex gap-3 bg-stone-50 rounded-2xl p-3 shadow-sm border border-stone-100"
+      style={{
+        animation: `slideUpFade 0.5s ease forwards ${animationDelay}s`,
+        opacity: 0,
+      }}
+    >
+      {/* Vehicle icon */}
+      <div className="w-12 h-12 bg-white rounded-xl shrink-0 flex items-center justify-center text-brand-teal shadow-sm">
+        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z" />
+        </svg>
+      </div>
+
+      {/* Route details */}
+      <div className="flex flex-col justify-between w-full">
+        <p className="font-extrabold text-[13px] text-brand-red leading-tight mb-1">
+          {type}: <span className="text-stone-700">{route}</span>
+        </p>
+        <div className="flex justify-between items-center">
+          <p className="text-[11px] text-brand-teal font-bold uppercase tracking-wide">
+            {distance} • <span className="text-stone-800">{fare}</span>
+          </p>
+          <button className="bg-brand-red hover:bg-brand-red/90 text-white font-black text-[9px] px-3 py-1.5 rounded-lg transition-all shadow-md uppercase tracking-wider active:scale-95">
+            Show Route
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
