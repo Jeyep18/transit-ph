@@ -21,8 +21,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / 'core' / '.env')
 
 #debug
-print(f"Loading .env from: {BASE_DIR / '.env'}")
-print(f".env file exists: {(BASE_DIR / '.env').exists()}")
+print(f"Loading .env from: {BASE_DIR /'core' / '.env'}")
+print(f".env file exists: {(BASE_DIR / 'core' / '.env').exists()}")
 print(f"DB_NAME from env: {os.getenv('DB_NAME')}")
 print(f"DB_USER from env: {os.getenv('DB_USER')}")
 print(f"DB_PASSWORD from env: {'[SET]' if os.getenv('DB_PASSWORD') else '[NOT SET]'}")
