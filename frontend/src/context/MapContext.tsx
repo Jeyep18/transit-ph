@@ -8,6 +8,15 @@ export interface PinCoords {
   label: string;
 }
 
+export interface RouteLegGeometry {
+  id: string;
+  color: string;
+  mode?: string;
+  label?: string;
+  durationMin?: number | null;
+  points: [number, number][];
+}
+
 interface MapContextType {
   mapRef: React.MutableRefObject<LeafletMap | null>;
   originPin: PinCoords | null;
@@ -20,6 +29,8 @@ interface MapContextType {
   // Route display
   routeGeometry: [number, number][] | null;
   setRouteGeometry: (geom: [number, number][] | null) => void;
+  routeLegGeometries: RouteLegGeometry[];
+  setRouteLegGeometries: (legs: RouteLegGeometry[]) => void;
   fitRouteToView: (geometry: [number, number][]) => void;
 }
 
@@ -35,6 +46,9 @@ export function MapProvider({ children }: { children: ReactNode }) {
   const [routeGeometry, setRouteGeometry] = useState<[number, number][] | null>(
     null,
   );
+  const [routeLegGeometries, setRouteLegGeometries] = useState<
+    RouteLegGeometry[]
+  >([]);
 
   const flyTo = (lat: number, lng: number, zoom = 16) => {
     mapRef.current?.flyTo([lat, lng], zoom, { animate: true, duration: 1.2 });
@@ -77,6 +91,8 @@ export function MapProvider({ children }: { children: ReactNode }) {
         setPinningMode,
         routeGeometry,
         setRouteGeometry,
+        routeLegGeometries,
+        setRouteLegGeometries,
         fitRouteToView,
       }}
     >

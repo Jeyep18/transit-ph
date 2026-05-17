@@ -1,37 +1,45 @@
-// LTFRB regulated jeepney fare matrix
-const JEEPNEY_BASE_FARE = 13.0; // PHP — covers first 4 km
-const JEEPNEY_BASE_KM = 4;
-const JEEPNEY_RATE_PER_KM = 1.8; // PHP per km beyond base distance
+import type { FareMatrix } from "@/types/fareMatrix";
 
-// Tricycle — advisory estimate only (locally negotiated, not LTFRB regulated)
+/**
+ * Implements BR-FCM-02:
+ * fare = base_fare + max(0, distance_km − base_km) × incremental_rate
+ * Rounded to 2 decimal places (BR-FCM-06).
+ */
+export function computeFare(
+  distanceKm: number,
+  matrix: Pick<FareMatrix, "base_fare" | "base_km" | "incremental_rate">,
+): number {
+  const extra = Math.max(0, distanceKm - matrix.base_km);
+  const raw = matrix.base_fare + extra * matrix.incremental_rate;
+  return Math.round(raw * 100) / 100;
+}
+
+// ── Fallback constants ────────────────────────────────────────────────────────
+// Used ONLY when the backend is unreachable.
+// Values must match the seed data inserted in Phase 1.
+export const FALLBACK_JEEPNEY_MATRIX: Pick<
+  FareMatrix,
+  "base_fare" | "base_km" | "incremental_rate"
+> = {
+  base_fare: 13.0,
+  base_km: 4,
+  incremental_rate: 1.8,
+};
+
+// Convenience helpers used by the UI -------------------------------------------------
+// These provide the simple, app-level fare calculators expected by components.
+export function computeJeepneyFare(distanceKm: number): number {
+  return computeFare(distanceKm, FALLBACK_JEEPNEY_MATRIX);
+}
+
+// Tricycle: advisory estimate (not LTFRB regulated)
 const TRICYCLE_BASE_FARE = 15.0;
 const TRICYCLE_RATE_PER_KM = 2.0;
 
-export function computeJeepneyFare(distanceKm: number): number {
-  const extra = Math.max(0, distanceKm - JEEPNEY_BASE_KM);
-  return (
-    Math.round((JEEPNEY_BASE_FARE + extra * JEEPNEY_RATE_PER_KM) * 100) / 100
-  );
-}
-
 export function computeTricycleFare(distanceKm: number): number {
-  return (
-    Math.round((TRICYCLE_BASE_FARE + distanceKm * TRICYCLE_RATE_PER_KM) * 100) /
-    100
-  );
+  const raw = TRICYCLE_BASE_FARE + distanceKm * TRICYCLE_RATE_PER_KM;
+  return Math.round(raw * 100) / 100;
 }
 
-export function formatFare(amount: number): string {
-  return `Php ${amount.toFixed(2)}`;
-}
-
-export function formatDistance(km: number): string {
-  return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`;
-}
-
-export function formatDuration(minutes: number): string {
-  if (minutes < 60) return `~${minutes} min`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `~${h}h ${m}m` : `~${h}h`;
-}
+// Re-export formatting utilities so callers can import them from the same module.
+export { formatFare, formatDistance, formatDuration } from "@/lib/formatters";

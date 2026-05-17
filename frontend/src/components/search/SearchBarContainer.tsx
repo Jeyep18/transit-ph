@@ -1,14 +1,27 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
-import { useGeocoding } from "@/hooks/useGeocoding";
+
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMapContext } from "@/context/MapContext";
+import { nominatimSearch } from "@/lib/nominatimSearch";
 
 interface Props {
   activeInputTarget: string | null;
   setActiveInputTarget: (val: string | null) => void;
-  onLocationSelect: (label: string, lat: number, lng: number) => void;
+  onLocationSelect: (selection: {
+    source: "nominatim";
+    label: string;
+    displayName: string;
+    lat: number;
+    lng: number;
+  }) => void;
   currentValue?: string;
 }
+
+type SearchSuggestion = {
+  display_name: string;
+  lat: number;
+  lon: number;
+};
 
 export default function SearchBarContainer({
   activeInputTarget,
@@ -17,67 +30,105 @@ export default function SearchBarContainer({
   currentValue = "",
 }: Props) {
   const [inputValue, setInputValue] = useState("");
-  const { results, loading, search, clear } = useGeocoding();
+  const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
+  const [loading, setLoading] = useState(false);
   const { flyTo } = useMapContext();
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const searchDebounceRef = useRef<number | null>(null);
 
-  // When a field is activated, pre-fill with its current value
+  const handleClose = useCallback(() => {
+    setActiveInputTarget(null);
+    setInputValue("");
+    setSuggestions([]);
+  }, [setActiveInputTarget]);
+
   useEffect(() => {
-    if (activeInputTarget) {
-      setInputValue(currentValue);
-      search(currentValue);
-      setTimeout(() => inputRef.current?.focus(), 50);
+    if (!activeInputTarget) return;
+    window.setTimeout(() => setInputValue(currentValue), 0);
+    window.setTimeout(() => inputRef.current?.focus(), 50);
+  }, [activeInputTarget, currentValue]);
+
+  useEffect(() => {
+    const query = inputValue.trim();
+    if (query.length < 3) {
+      window.setTimeout(() => setSuggestions([]), 0);
+      return;
     }
-  }, [activeInputTarget]);
 
-  // Close on outside click
+    let canceled = false;
+    if (searchDebounceRef.current) {
+      window.clearTimeout(searchDebounceRef.current);
+    }
+
+    searchDebounceRef.current = window.setTimeout(() => {
+      if (canceled) return;
+      setLoading(true);
+      nominatimSearch(query)
+        .then((results) => {
+          if (canceled) return;
+          setSuggestions(
+            results.map((result) => ({
+              display_name: result.display_name,
+              lat: result.lat,
+              lon: result.lon,
+            })),
+          );
+        })
+        .catch(() => {
+          if (!canceled) setSuggestions([]);
+        })
+        .finally(() => {
+          if (!canceled) setLoading(false);
+        });
+    }, 350);
+
+    return () => {
+      canceled = true;
+      if (searchDebounceRef.current) {
+        window.clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [activeInputTarget, inputValue]);
+
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+    const handler = (event: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) {
         handleClose();
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [handleClose]);
 
-  const handleClose = () => {
-    setActiveInputTarget(null);
-    setInputValue("");
-    clear();
-  };
-
-  const handleInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setInputValue(val);
-    search(val);
-  };
-
-  const handleSelect = (result: {
-    displayName: string;
-    shortName: string;
-    lat: number;
-    lng: number;
-  }) => {
-    onLocationSelect(result.shortName, result.lat, result.lng);
-    flyTo(result.lat, result.lng);
+  const handleSelect = (item: SearchSuggestion) => {
+    onLocationSelect({
+      source: "nominatim",
+      label: item.display_name,
+      displayName: item.display_name,
+      lat: item.lat,
+      lng: item.lon,
+    });
+    flyTo(item.lat, item.lon);
     handleClose();
   };
 
-  const isVisible = !!activeInputTarget;
+  const handleSearchTextChange = (value: string) => {
+    if (!activeInputTarget) setActiveInputTarget("to");
+    setInputValue(value);
+  };
+
+  const isVisible = !!activeInputTarget || inputValue.trim().length > 0;
 
   return (
     <div ref={wrapRef} className="relative">
-      {/* Search input — always rendered, visibility toggled */}
       <div
         className={`
-          flex items-center bg-white rounded-full px-4 py-2.5 gap-2
-          shadow-md transition-all duration-200
-          ${isVisible ? "ring-2 ring-[#CC553D]/40" : ""}
+          flex items-center bg-white/95 rounded-full px-4 py-3 gap-2
+          shadow-lg transition-all duration-200 backdrop-blur-sm
+          ${isVisible ? "ring-2 ring-[#CC553D]/45 scale-[1.01]" : ""}
         `}
       >
-        {/* Search icon */}
         <svg
           className="w-4 h-4 text-gray-400 flex-shrink-0"
           fill="none"
@@ -96,19 +147,21 @@ export default function SearchBarContainer({
           ref={inputRef}
           type="text"
           value={inputValue}
-          onChange={handleInput}
+          onChange={(event) => handleSearchTextChange(event.target.value)}
+          onInput={(event) =>
+            handleSearchTextChange(event.currentTarget.value)
+          }
           onFocus={() => {
             if (!activeInputTarget) setActiveInputTarget("to");
           }}
           placeholder={
             activeInputTarget === "from"
-              ? "Search current location..."
-              : "Search destination..."
+              ? "Search origin on OpenStreetMap..."
+              : "Search destination on OpenStreetMap..."
           }
-          className="flex-1 text-sm text-gray-700 placeholder:text-gray-400 outline-none bg-transparent"
+          className="flex-1 text-sm font-medium text-gray-700 placeholder:text-gray-400 outline-none bg-transparent"
         />
 
-        {/* Loading spinner */}
         {loading && (
           <svg
             className="w-4 h-4 text-[#CC553D] animate-spin flex-shrink-0"
@@ -131,7 +184,6 @@ export default function SearchBarContainer({
           </svg>
         )}
 
-        {/* Clear / close button */}
         {isVisible && (
           <button
             onClick={handleClose}
@@ -155,8 +207,7 @@ export default function SearchBarContainer({
         )}
       </div>
 
-      {/* Results dropdown */}
-      {isVisible && results.length > 0 && (
+      {isVisible && suggestions.length > 0 && (
         <div
           className="
           absolute top-full left-0 right-0 mt-1.5 z-50
@@ -164,10 +215,10 @@ export default function SearchBarContainer({
           overflow-hidden
         "
         >
-          {results.map((result, i) => (
+          {suggestions.map((item, index) => (
             <button
-              key={i}
-              onClick={() => handleSelect(result)}
+              key={`${item.lat}-${item.lon}-${index}`}
+              onClick={() => handleSelect(item)}
               className="
                 w-full text-left px-4 py-3 flex items-start gap-3
                 hover:bg-gray-50 active:bg-gray-100
@@ -175,7 +226,6 @@ export default function SearchBarContainer({
                 transition-colors duration-100
               "
             >
-              {/* Location pin icon */}
               <svg
                 className="w-4 h-4 text-[#CC553D] flex-shrink-0 mt-0.5"
                 fill="currentColor"
@@ -190,10 +240,10 @@ export default function SearchBarContainer({
 
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-800 truncate">
-                  {result.shortName}
+                  {item.display_name}
                 </p>
                 <p className="text-xs text-gray-400 truncate mt-0.5">
-                  {result.displayName}
+                  OpenStreetMap
                 </p>
               </div>
             </button>
@@ -201,11 +251,10 @@ export default function SearchBarContainer({
         </div>
       )}
 
-      {/* No results state */}
       {isVisible &&
         !loading &&
         inputValue.length >= 3 &&
-        results.length === 0 && (
+        suggestions.length === 0 && (
           <div
             className="
           absolute top-full left-0 right-0 mt-1.5 z-50
@@ -214,7 +263,7 @@ export default function SearchBarContainer({
         "
           >
             <p className="text-sm text-gray-400">
-              No locations found for "{inputValue}"
+              No OSM locations found for &quot;{inputValue}&quot;
             </p>
           </div>
         )}

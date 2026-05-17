@@ -1,7 +1,20 @@
+import math
+from decimal import Decimal
+
 from django.db import models
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator, RegexValidator
 from django.core.exceptions import ValidationError
+
+
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Return the great-circle distance in km between two points."""
+    R = 6371.0  # Earth radius in km
+    phi1, phi2 = math.radians(float(lat1)), math.radians(float(lat2))
+    dphi = math.radians(float(lat2) - float(lat1))
+    dlam = math.radians(float(lon2) - float(lon1))
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 # Create your models here.
 
@@ -108,8 +121,8 @@ class Station(models.Model):
         decimal_places=6,
         null=False,
         validators=[
-            MinValueValidator(-90.0),
-            MaxValueValidator(90.0)
+            MinValueValidator(Decimal('-90.0')),
+            MaxValueValidator(Decimal('90.0'))
         ]
     )
     longitude = models.DecimalField(
@@ -117,8 +130,8 @@ class Station(models.Model):
         decimal_places=6,
         null=False,
         validators=[
-            MinValueValidator(-180.0),
-            MaxValueValidator(180.0)
+            MinValueValidator(Decimal('-180.0')),
+            MaxValueValidator(Decimal('180.0'))
         ]
     )
     address = models.TextField(null=True, blank=True)
@@ -130,10 +143,7 @@ class Station(models.Model):
         null=False, 
         default=timezone.now
     )
-    updated_at = models.DateTimeField(
-        null=False, 
-        default=timezone.now
-    )
+    updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         Admin, 
         on_delete=models.SET_NULL, 
@@ -154,11 +164,27 @@ class Station(models.Model):
         return self.station_type == 'JEEPNEY_STOP'
     
     def clean(self):
-        #BR-ST-02: Validate coordinate ranges
+        # BR-ST-02: Validate coordinate ranges
         if self.latitude and (self.latitude < -90 or self.latitude > 90):
             raise ValidationError({'latitude': 'Latitude must be between -90 and 90.'})
         if self.longitude and (self.longitude < -180 or self.longitude > 180):
             raise ValidationError({'longitude': 'Longitude must be between -180 and 180.'})
+
+        # BR-ST-02: Reject new stations within 50 meters of an existing active station
+        if self.latitude and self.longitude:
+            nearby = Station.objects.filter(is_active=True)
+            if self.pk:
+                nearby = nearby.exclude(pk=self.pk)
+            for other in nearby:
+                dist = haversine_km(self.latitude, self.longitude, other.latitude, other.longitude)
+                if dist < 0.05:  # 50 meters = 0.05 km
+                    raise ValidationError(
+                        f'A station "{other.name}" already exists within 50 meters of this location.'
+                    )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 # ROUTE
@@ -206,10 +232,7 @@ class Route(models.Model):
         null=False, 
         default=timezone.now
     )
-    updated_at = models.DateTimeField(
-        null=False, 
-        default=timezone.now
-    )
+    updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
         Admin, 
         on_delete=models.SET_NULL, 
@@ -307,6 +330,185 @@ class RouteStation(models.Model):
         super().save(*args, **kwargs)
 
 
+# GRAPH ROUTING
+class GraphNode(models.Model):
+    NODE_TYPES = [
+        ('INTERSECTION', 'Intersection'),
+        ('CORNER', 'Corner'),
+        ('POI', 'Point of Interest'),
+        ('VIRTUAL', 'Virtual Search Point'),
+    ]
+
+    graph_node_id = models.BigAutoField(primary_key=True)
+    name = models.CharField(max_length=150, null=True, blank=True)
+    node_type = models.CharField(
+        max_length=20,
+        choices=NODE_TYPES,
+        default='INTERSECTION',
+    )
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        validators=[
+            MinValueValidator(Decimal('-90.0')),
+            MaxValueValidator(Decimal('90.0')),
+        ],
+    )
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        validators=[
+            MinValueValidator(Decimal('-180.0')),
+            MaxValueValidator(Decimal('180.0')),
+        ],
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        Admin,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = 'graph_node'
+        verbose_name = 'Graph Node'
+        verbose_name_plural = 'Graph Nodes'
+
+    def __str__(self):
+        label = self.name or f'Node {self.graph_node_id}'
+        return f'{label} ({self.latitude}, {self.longitude})'
+
+
+class GraphEdge(models.Model):
+    graph_edge_id = models.BigAutoField(primary_key=True)
+    from_node = models.ForeignKey(
+        GraphNode,
+        on_delete=models.PROTECT,
+        related_name='outgoing_edges',
+    )
+    to_node = models.ForeignKey(
+        GraphNode,
+        on_delete=models.PROTECT,
+        related_name='incoming_edges',
+    )
+    distance_km = models.DecimalField(
+        max_digits=8,
+        decimal_places=3,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.001'))],
+    )
+    travel_time_min = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(Decimal('0.01'))],
+    )
+    is_bidirectional = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        Admin,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = 'graph_edge'
+        verbose_name = 'Graph Edge'
+        verbose_name_plural = 'Graph Edges'
+        unique_together = [['from_node', 'to_node']]
+
+    def __str__(self):
+        return f'{self.from_node_id} -> {self.to_node_id} ({self.distance_km} km)'
+
+    def clean(self):
+        if self.from_node_id and self.to_node_id and self.from_node_id == self.to_node_id:
+            raise ValidationError('Graph edge endpoints must be different nodes.')
+
+    def save(self, *args, **kwargs):
+        if not self.distance_km and self.from_node_id and self.to_node_id:
+            self.distance_km = Decimal(str(round(haversine_km(
+                self.from_node.latitude,
+                self.from_node.longitude,
+                self.to_node.latitude,
+                self.to_node.longitude,
+            ), 3)))
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class JeepneyLoop(models.Model):
+    jeepney_loop_id = models.BigAutoField(primary_key=True)
+    code = models.CharField(
+        max_length=30,
+        unique=True,
+        validators=[
+            RegexValidator(
+                regex=r'^[A-Z0-9\-]+$',
+                message='Loop code must be uppercase alphanumeric with hyphens only.',
+            )
+        ],
+    )
+    name = models.CharField(max_length=150)
+    description = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        Admin,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = 'jeepney_loop'
+        verbose_name = 'Jeepney Loop'
+        verbose_name_plural = 'Jeepney Loops'
+
+    def __str__(self):
+        return f'{self.code} - {self.name}'
+
+
+class JeepneyLoopEdge(models.Model):
+    jeepney_loop_edge_id = models.BigAutoField(primary_key=True)
+    loop = models.ForeignKey(
+        JeepneyLoop,
+        on_delete=models.CASCADE,
+        related_name='loop_edges',
+    )
+    edge = models.ForeignKey(
+        GraphEdge,
+        on_delete=models.PROTECT,
+        related_name='loop_tags',
+    )
+    sequence_order = models.IntegerField(validators=[MinValueValidator(1)])
+    is_active = models.BooleanField(default=True)
+    updated_by = models.ForeignKey(
+        Admin,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        db_table = 'jeepney_loop_edge'
+        verbose_name = 'Jeepney Loop Edge'
+        verbose_name_plural = 'Jeepney Loop Edges'
+        unique_together = [['loop', 'edge'], ['loop', 'sequence_order']]
+        ordering = ['loop', 'sequence_order']
+
+    def __str__(self):
+        return f'{self.loop.code} edge {self.sequence_order}'
+
+
 # FARE MATRIX
 class FareMatrix(models.Model):  
     fare_matrix_id = models.BigAutoField(primary_key=True)
@@ -319,19 +521,19 @@ class FareMatrix(models.Model):
         max_digits=8, 
         decimal_places=2,
         null=False,
-        validators=[MinValueValidator(0.01)]  
+        validators=[MinValueValidator(Decimal('0.01'))]
     )
     base_km = models.DecimalField(
         max_digits=6, 
         decimal_places=2,
         null=False,
-        validators=[MinValueValidator(0.01)]  
+        validators=[MinValueValidator(Decimal('0.01'))]
     )
     incremental_rate = models.DecimalField(
         max_digits=8, 
         decimal_places=2,
         null=False,
-        validators=[MinValueValidator(0)]  
+        validators=[MinValueValidator(Decimal('0'))]
     )
     effective_date = models.DateField(null=False)
     is_active = models.BooleanField(
@@ -374,13 +576,13 @@ class FareMatrix(models.Model):
                 )
     
     def save(self, *args, **kwargs):
-        self.full_clean()
-        
         # BR-FM-01: Automatically deactivate previous active matrix
         if self.is_active:
             FareMatrix.objects.filter(
                 transport_mode=self.transport_mode,
                 is_active=True
             ).exclude(pk=self.pk).update(is_active=False)
+
+        self.full_clean()
         
         super().save(*args, **kwargs)

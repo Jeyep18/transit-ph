@@ -7,10 +7,18 @@ const MapView = dynamic(() => import("./MapView"), {
   loading: () => <div className="h-full w-full bg-[#e8f0d8] animate-pulse" />,
 });
 
-export default function MapWrapper() {
+interface MapWrapperProps {
+  showLoops?: boolean;
+  showStations: boolean;
+}
+
+export default function MapWrapper({
+  showLoops = false,
+  showStations,
+}: MapWrapperProps) {
   return (
     <div className="fixed inset-0 z-0">
-      <MapView />
+      <MapView showLoops={showLoops} showStations={showStations} />
     </div>
   );
 }

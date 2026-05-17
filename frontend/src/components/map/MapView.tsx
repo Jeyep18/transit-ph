@@ -12,6 +12,8 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useMapContext } from "@/context/MapContext";
+import JeepneyLoopLayer from "@/components/map/JeepneyLoopLayer";
+import StationLayer from "@/components/map/StationLayer";
 
 const DEFAULT_CENTER: [number, number] = [13.6218, 123.1948];
 const DEFAULT_ZOOM = 14;
@@ -53,8 +55,64 @@ function CursorController() {
   return null;
 }
 
-export default function MapView() {
-  const { originPin, destinationPin, routeGeometry } = useMapContext();
+function midpoint(points: [number, number][]) {
+  return points[Math.floor(points.length / 2)];
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function legBadgeIcon(label: string, durationMin?: number | null) {
+  const duration = durationMin ? `${Math.round(durationMin)} min` : "";
+  const safeLabel = escapeHtml(label);
+  const html = `
+    <div style="
+      transform: translate(-50%, -115%);
+      background: rgba(255,255,255,0.96);
+      border: 1px solid rgba(0,63,72,0.16);
+      border-radius: 999px;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+      color: #003F48;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 7px 10px;
+      white-space: nowrap;
+    ">
+      <span>${safeLabel}</span>
+      ${duration ? `<span style="color:#CC553D">${duration}</span>` : ""}
+    </div>
+  `;
+
+  return L.divIcon({
+    className: "",
+    html,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  });
+}
+
+interface MapViewProps {
+  showLoops: boolean;
+  showStations: boolean;
+}
+
+export default function MapView({ showLoops, showStations }: MapViewProps) {
+  const {
+    originPin,
+    destinationPin,
+    routeGeometry,
+    routeLegGeometries,
+  } = useMapContext();
 
   const originIcon = useMemo(
     () =>
@@ -96,17 +154,45 @@ export default function MapView() {
       <MapClickHandler />
       <CursorController />
 
-      {/* Route polyline — white border underneath, colored line on top */}
-      {routeGeometry && routeGeometry.length > 0 && (
+      {routeLegGeometries.length > 0 ? (
         <>
-          {/* White border stroke — drawn first, slightly thicker */}
+          {routeLegGeometries.map((leg) => (
+            <Polyline
+              key={`${leg.id}-border`}
+              positions={leg.points}
+              color="white"
+              weight={9}
+              opacity={0.9}
+            />
+          ))}
+          {routeLegGeometries.map((leg) => (
+            <Polyline
+              key={leg.id}
+              positions={leg.points}
+              color={leg.color}
+              weight={5}
+              opacity={0.95}
+            />
+          ))}
+          {routeLegGeometries
+            .filter((leg) => leg.points.length > 1 && leg.label)
+            .map((leg) => (
+              <Marker
+                key={`${leg.id}-label`}
+                position={midpoint(leg.points)}
+                icon={legBadgeIcon(leg.label || "Route", leg.durationMin)}
+                interactive={false}
+              />
+            ))}
+        </>
+      ) : routeGeometry && routeGeometry.length > 0 ? (
+        <>
           <Polyline
             positions={routeGeometry}
             color="white"
             weight={9}
             opacity={0.9}
           />
-          {/* Colored route line on top */}
           <Polyline
             positions={routeGeometry}
             color="#CC553D"
@@ -114,7 +200,7 @@ export default function MapView() {
             opacity={0.95}
           />
         </>
-      )}
+      ) : null}
 
       {originPin && (
         <Marker position={[originPin.lat, originPin.lng]} icon={originIcon}>
@@ -125,6 +211,9 @@ export default function MapView() {
           </Popup>
         </Marker>
       )}
+
+      <StationLayer visible={showStations} />
+      <JeepneyLoopLayer visible={showLoops} />
 
       {destinationPin && (
         <Marker

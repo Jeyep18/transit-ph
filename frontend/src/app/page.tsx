@@ -1,37 +1,42 @@
 "use client";
 import { useState } from "react";
 import { MapProvider, useMapContext } from "@/context/MapContext";
-import { useRouting } from "@/hooks/useRouting";
-import {
-  computeJeepneyFare,
-  computeTricycleFare,
-  formatFare,
-} from "@/lib/fareComputation";
-import { Route } from "@/components/route-panel/BottomSheet";
+import { useRouteSearch } from "@/hooks/useRouteSearch";
+import type { RouteResult } from "@/types/search";
 import MapContainer from "@/components/map/MapContainer";
-import Header from "@/components/Header";
 import SearchBarContainer from "@/components/search/SearchBarContainer";
 import MapOverlayButtons from "@/components/map/PinButtonsBar/PinCircleBar";
 import RouteInformationForm from "@/components/route-panel/RouteInformationForm";
-import TransportSelector from "@/components/route-panel/TransportSelector";
 import SearchRoutesButton from "@/components/route-panel/SearchRoutesButton";
 import BottomSheet from "@/components/route-panel/BottomSheet";
 import StationsRouteToggle from "@/components/map/StationsRouteToggle";
 
 function HomeContent() {
+  const legColors = ["#CC553D", "#1B3A6B", "#2E8B57", "#8B5CF6"];
   const [activeInputTarget, setActiveInputTarget] = useState<string | null>(
     null,
   );
+  const [hasStarted, setHasStarted] = useState(false);
   const [fromValue, setFromValue] = useState("");
   const [toValue, setToValue] = useState("");
-  const [selectedTransports, setSelectedTransports] = useState(["Jeepney"]);
+  const [selectedTransports, setSelectedTransports] = useState([
+    "Jeepney",
+    "Tricycle",
+    "E-Jeep",
+  ]);
   const [slideCardOpen, setSlideCardOpen] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [suggestedRoutes, setSuggestedRoutes] = useState<Route[]>([]);
-  const [activeFilter, setActiveFilter] = useState<
-    "stations" | "routes" | null
-  >(null);
-  const [routeError, setRouteError] = useState<string | null>(null);
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState<number | null>(
+    null,
+  );
+  const {
+    results: routeResults,
+    loading: routeLoading,
+    error: routeError,
+    search,
+    reset: resetRoutes,
+  } = useRouteSearch();
+  const [activeFilter, setActiveFilter] = useState<"routes" | null>(null);
 
   const {
     originPin,
@@ -39,31 +44,78 @@ function HomeContent() {
     setOriginPin,
     setDestinationPin,
     setRouteGeometry,
+    setRouteLegGeometries,
     fitRouteToView,
     flyTo,
+    pinningMode,
   } = useMapContext();
 
-  const { loading: routeLoading, getRoute } = useRouting();
+  const displayRouteOnMap = (route: RouteResult, index: number) => {
+    const legGeometries = route.legs
+      .map((leg, index) => ({
+        id: `${leg.route_id}-${index}`,
+        color:
+          leg.mode === "TRICYCLE" || leg.mode === "WALKING"
+            ? "#2E8B57"
+            : legColors[index % legColors.length],
+        mode: leg.mode,
+        label: getLegMapLabel(leg),
+        durationMin: leg.estimated_duration_min,
+        points: (leg.geometry ?? leg.stops ?? []).map((point) => [
+          point.latitude,
+          point.longitude,
+        ] as [number, number]),
+      }))
+      .filter((leg) => leg.points.length > 1);
 
-  const handleLocationSelect = (label: string, lat: number, lng: number) => {
+    const allPoints = legGeometries.flatMap((leg) => leg.points);
+    setRouteLegGeometries(legGeometries);
+    setRouteGeometry(allPoints.length > 1 ? allPoints : null);
+    if (allPoints.length > 1) {
+      fitRouteToView(allPoints);
+    }
+    setSelectedRouteIndex(index);
+  };
+
+  const handleLocationSelect = (
+    selection: {
+      source: "nominatim";
+      label: string;
+      displayName: string;
+      lat: number;
+      lng: number;
+    },
+  ) => {
     if (activeInputTarget === "from") {
-      setFromValue(label);
-      setOriginPin({ lat, lng, label });
-      flyTo(lat, lng);
+      setFromValue(selection.label);
+      setOriginPin({
+        lat: selection.lat,
+        lng: selection.lng,
+        label: selection.label,
+      });
+      flyTo(selection.lat, selection.lng);
     } else {
-      setToValue(label);
-      setDestinationPin({ lat, lng, label });
-      flyTo(lat, lng);
+      setToValue(selection.label);
+      setDestinationPin({
+        lat: selection.lat,
+        lng: selection.lng,
+        label: selection.label,
+      });
+      flyTo(selection.lat, selection.lng);
     }
     setActiveInputTarget(null);
   };
 
-  const searchRoutes = async () => {
-    // Guard: both text labels must be set
-    if (!fromValue || !toValue) {
-      alert("Please select both a starting point and a destination.");
-      return;
-    }
+  const showStations = false;
+  const showLoops = activeFilter === "routes";
+  const canSearch =
+    !!originPin &&
+    !!destinationPin &&
+    selectedTransports.length > 0;
+  const displayedFromValue = originPin?.label ?? fromValue;
+  const displayedToValue = destinationPin?.label ?? toValue;
+
+  const handleSearch = async () => {
     // Guard: both pins must have coordinates
     if (!originPin || !destinationPin) {
       alert(
@@ -76,72 +128,97 @@ function HomeContent() {
       return;
     }
 
-    setRouteError(null);
-
-    const routeData = await getRoute(
-      { lat: originPin.lat, lng: originPin.lng },
-      { lat: destinationPin.lat, lng: destinationPin.lng },
-    );
-
-    if (!routeData) {
-      setRouteError("No road route found between these locations.");
-      return;
-    }
-
-    const { distanceKm, durationMin, geometry } = routeData;
-
-    // Draw the route
-    setRouteGeometry(geometry);
-    fitRouteToView(geometry);
-
-    const allRoutes: Route[] = [
-      {
-        type: "Jeepney",
-        route: `${fromValue} → ${toValue}`,
-        distanceKm,
-        durationMin,
-        fare: formatFare(computeJeepneyFare(distanceKm)),
-        isEstimated: false,
-      },
-      {
-        type: "Tricycle",
-        route: `${toValue}`,
-        distanceKm: Math.min(distanceKm, 5), // tricycles are short-distance
-        durationMin: Math.ceil(durationMin * 0.8),
-        fare: formatFare(computeTricycleFare(Math.min(distanceKm, 5))),
-        isEstimated: true,
-      },
-    ];
-
-    const filtered = allRoutes.filter((r) =>
-      selectedTransports.some((t) => r.type.includes(t)),
-    );
-
-    setSuggestedRoutes(filtered);
+    setRouteGeometry(null);
+    setRouteLegGeometries([]);
+    setSelectedRouteIndex(null);
     setHasSearched(true);
     setSlideCardOpen(true);
+
+    const results = await search({
+      origin_lat: originPin.lat,
+      origin_lng: originPin.lng,
+      dest_lat: destinationPin.lat,
+      dest_lng: destinationPin.lng,
+      sort_by: "fare",
+    });
+
+    if (results[0]) {
+      displayRouteOnMap(results[0], 0);
+    } else {
+      setSelectedRouteIndex(null);
+    }
+
   };
+
+  const clearTrip = () => {
+    setOriginPin(null);
+    setDestinationPin(null);
+    setFromValue("");
+    setToValue("");
+    setRouteGeometry(null);
+    setRouteLegGeometries([]);
+    setSelectedRouteIndex(null);
+    setHasSearched(false);
+    setSlideCardOpen(false);
+    resetRoutes();
+  };
+
+  const toggleTransport = (transport: string) => {
+    setSelectedTransports((prev) =>
+      prev.includes(transport)
+        ? prev.filter((item) => item !== transport)
+        : [...prev, transport],
+    );
+  };
+
+  if (!hasStarted) {
+    return (
+      <main className="flex h-dvh w-screen items-center justify-center bg-[#0F3D35] px-6 text-center">
+        <div className="animate-slideUpFade w-full max-w-sm">
+          <h1 className="transit-title text-[44px] leading-none">
+            TRANSIT PH
+          </h1>
+          <p className="mt-2 text-sm font-bold text-white/85">
+            Search or pin your trip across Naga jeepney routes.
+          </p>
+          <button
+            type="button"
+            onClick={() => setHasStarted(true)}
+            onPointerUp={() => setHasStarted(true)}
+            className="animate-softPulse mt-8 w-full rounded-2xl bg-[#CC553D] px-5 py-4 text-sm font-extrabold text-white shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:bg-[#D75F47] active:scale-[0.98]"
+          >
+            Start Commuting
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="h-dvh w-screen overflow-hidden relative bg-[#d4e8c2]">
-      <MapContainer />
+      <MapContainer showLoops={showLoops} showStations={showStations} />
 
       <div className="absolute inset-0 z-10 flex flex-col max-w-md mx-auto pointer-events-none">
         {/* TOP */}
-        <Header />
-        <div className="flex-none px-4 pt-3 pb-2 pointer-events-auto">
+        <div className="flex-none px-4 pt-5 pb-2 pointer-events-auto">
           <div className="flex flex-col mt-1">
             <SearchBarContainer
               activeInputTarget={activeInputTarget}
               setActiveInputTarget={setActiveInputTarget}
               onLocationSelect={handleLocationSelect}
-              currentValue={activeInputTarget === "from" ? fromValue : toValue}
+              currentValue={
+                activeInputTarget === "from"
+                  ? displayedFromValue
+                  : displayedToValue
+              }
             />
 
             <div className="flex justify-end mt-3">
               <StationsRouteToggle
                 activeFilter={activeFilter}
-                onToggle={setActiveFilter}
+                onToggle={() =>
+                  setActiveFilter((prev) => (prev === "routes" ? null : "routes"))
+                }
               />
             </div>
           </div>
@@ -157,7 +234,16 @@ function HomeContent() {
           {routeError && (
             <div className="absolute top-3 left-4 right-4 pointer-events-auto">
               <div className="bg-red-500 text-white text-xs font-medium px-4 py-2.5 rounded-xl shadow-lg">
-                ⚠️ {routeError}
+                {routeError}
+              </div>
+            </div>
+          )}
+
+          {pinningMode && (
+            <div className="absolute top-3 left-4 right-4 pointer-events-none">
+              <div className="mx-auto w-fit max-w-full rounded-full bg-[#003F48] px-4 py-2 text-center text-xs font-bold text-white shadow-lg">
+                Tap the map to set your{" "}
+                {pinningMode === "origin" ? "origin" : "destination"} pin
               </div>
             </div>
           )}
@@ -166,30 +252,40 @@ function HomeContent() {
         {/* BOTTOM */}
         <div className="flex-none px-4 pb-3 flex flex-col gap-3 pointer-events-auto">
           <RouteInformationForm
-            fromValue={fromValue}
-            toValue={toValue}
-            activateLocationInput={(t) => setActiveInputTarget(t)}
-          />
-          <TransportSelector
-            selectedTransports={selectedTransports}
-            toggleTransport={(t) =>
-              setSelectedTransports((prev) =>
-                prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t],
-              )
+            fromValue={displayedFromValue}
+            toValue={displayedToValue}
+            activeTarget={
+              activeInputTarget === "from" || activeInputTarget === "to"
+                ? activeInputTarget
+                : null
             }
+            activateLocationInput={(t) => setActiveInputTarget(t)}
           />
 
           {/* Loading state on the button */}
-          <SearchRoutesButton onClick={searchRoutes} loading={routeLoading} />
+          <SearchRoutesButton
+            onClick={handleSearch}
+            loading={routeLoading}
+            disabled={!canSearch}
+            disabledLabel="Select origin and destination"
+          />
 
           {hasSearched && (
-            <button
-              onClick={() => setSlideCardOpen((p) => !p)}
-              className="w-full py-2 rounded-xl text-sm font-semibold bg-[#1B3A6B] text-white flex items-center justify-center gap-2"
-            >
-              <span>{slideCardOpen ? "▼" : "▲"}</span>
-              {slideCardOpen ? "Hide Routes" : "Show Suggested Routes"}
-            </button>
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <button
+                onClick={() => setSlideCardOpen((p) => !p)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1B3A6B] py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#1B3A6B]/20 transition hover:-translate-y-0.5 active:scale-[0.98]"
+              >
+                <span>{slideCardOpen ? "v" : "^"}</span>
+                {slideCardOpen ? "Hide Routes" : "Show Suggested Routes"}
+              </button>
+              <button
+                onClick={clearTrip}
+                className="rounded-xl bg-white/95 px-4 py-2.5 text-sm font-extrabold text-[#003F48] shadow-lg transition hover:-translate-y-0.5 active:scale-[0.98]"
+              >
+                Clear
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -197,10 +293,28 @@ function HomeContent() {
       <BottomSheet
         slideCardOpen={slideCardOpen}
         setSlideCardOpen={setSlideCardOpen}
-        suggestedRoutes={suggestedRoutes}
+        suggestedRoutes={routeResults}
+        loading={routeLoading}
+        selectedTransports={selectedTransports}
+        toggleTransport={toggleTransport}
+        selectedRouteIndex={selectedRouteIndex}
+        onShowRoute={displayRouteOnMap}
       />
     </div>
   );
+}
+
+function getLegMapLabel(leg: RouteResult["legs"][number]) {
+  if (leg.mode === "JEEPNEY") {
+    return leg.loop_name || leg.route_name || "Jeepney";
+  }
+  if (leg.mode === "WALKING") {
+    return "Walk";
+  }
+  if (leg.mode === "TRICYCLE") {
+    return "Tricycle";
+  }
+  return leg.transport_mode_name || "Route";
 }
 
 export default function Home() {

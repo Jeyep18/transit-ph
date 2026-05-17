@@ -7,7 +7,7 @@ export default function Header() {
         TRANSIT PH
       </h1>
       <p className="text-[11px] font-bold text-white tracking-tight">
-        Search or Pin your Destination
+        Search or pin your trip
       </p>
     </div>
   );

@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useState } from "react";
 import PinCurrentLocation from "./PinCurrentLocation";
 import PinDestination from "./PinDestination";
@@ -18,7 +19,7 @@ function MapOverlayButtons() {
         overflow-hidden
         transition-all duration-300 ease-in-out
         w-[3.75rem]
-        ${isExpanded ? "h-[12.25rem] py-3" : "h-[3.75rem]"}
+        ${isExpanded ? "h-[12.25rem] py-3" : "h-[3.75rem] animate-floaty"}
       `}
     >
       {/* COLLAPSED PIN BUTTON - mounted but hidden */}
@@ -28,15 +29,17 @@ function MapOverlayButtons() {
           flex items-center justify-center
           w-full h-[3.75rem]
           shrink-0
-          cursor-pointer
+          cursor-pointer transition-transform active:scale-95
           ${isExpanded ? "hidden" : "flex"}
         `}
         aria-label="Open location options"
       >
         <div className="flex items-center justify-center w-12 h-12">
-          <img
+          <Image
             src="/Icons/PinIconWhite.svg"
             alt="Pin Icon"
+            width={32}
+            height={32}
             className="w-8 h-8 object-contain"
           />
         </div>
@@ -59,13 +62,15 @@ function MapOverlayButtons() {
             flex items-center justify-center
             w-12 h-12
             shrink-0
-            cursor-pointer
+            cursor-pointer transition-transform active:scale-95
           "
           aria-label="Collapse location options"
         >
-          <img
+          <Image
             src="/Icons/Check.svg"
             alt="Check Icon"
+            width={32}
+            height={32}
             className="w-8 h-8 object-contain"
           />
         </button>

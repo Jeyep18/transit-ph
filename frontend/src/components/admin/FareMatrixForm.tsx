@@ -80,7 +80,7 @@ export default function FareMatrixForm() {
           className="border p-2 w-30 bg-green-950 text-white rounded-sm"
           value={view}
           onChange={(e) => {
-            const newView = e.target.value as any;
+            const newView = e.target.value as "jeep" | "tricycle" | "ejeep";
             setView(newView);
             setTempRules(rules[newView]);
             setIsEditing(false);

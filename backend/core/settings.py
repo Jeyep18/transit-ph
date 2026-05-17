@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,12 +21,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load environment variables from .env file
 load_dotenv(BASE_DIR / 'core' / '.env')
 
-#debug
-print(f"Loading .env from: {BASE_DIR /'core' / '.env'}")
-print(f".env file exists: {(BASE_DIR / 'core' / '.env').exists()}")
-print(f"DB_NAME from env: {os.getenv('DB_NAME')}")
-print(f"DB_USER from env: {os.getenv('DB_USER')}")
-print(f"DB_PASSWORD from env: {'[SET]' if os.getenv('DB_PASSWORD') else '[NOT SET]'}")
+
 
 
 # Quick-start development settings - unsuitable for production
@@ -37,11 +33,20 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-q4ew_9f@g)3a1#(9%gls$ie-@n
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = (
+    [host.strip() for host in os.getenv('ALLOWED_HOSTS', '').split(',') if host.strip()]
+    or (['*'] if DEBUG else ['localhost', '127.0.0.1'])
+)
 
-# CORS settings for Next.js (add this)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+# CORS settings for local/LAN demos.
+CORS_ALLOW_ALL_ORIGINS = DEBUG
+CORS_ALLOWED_ORIGINS = [] if CORS_ALLOW_ALL_ORIGINS else [
+    origin.strip()
+    for origin in os.getenv('CORS_ALLOWED_ORIGINS', '').split(',')
+    if origin.strip()
+]
+CORS_ALLOW_HEADERS = list(default_headers) + [
+    "Authorization",
 ]
 
 # Application definition
@@ -138,5 +143,16 @@ STATIC_URL = 'static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/6.0/ref/settings/#default-auto-field
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Django REST Framework
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'transitph.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 50,
+}

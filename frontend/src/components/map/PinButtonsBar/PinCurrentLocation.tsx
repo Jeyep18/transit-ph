@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useState } from "react";
 import { useMapContext } from "@/context/MapContext";
 
@@ -45,9 +46,10 @@ function PinCurrentLocation({ onLocationFound }: Props) {
         setLoading(false);
       },
       (err) => {
-        console.warn("Geolocation error:", err.message);
         alert(
-          "Could not get your location. Please check your browser permissions.",
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission is blocked. Please allow location access or search for your origin."
+            : "Could not get your location. Please search for your origin or try again.",
         );
         setLoading(false);
       },
@@ -86,10 +88,12 @@ function PinCurrentLocation({ onLocationFound }: Props) {
             />
           </svg>
         ) : (
-          <img
+          <Image
             src="/Icons/WhiteCurrentLocation.svg"
             className="w-5 h-5 object-contain"
             alt="Current location"
+            width={20}
+            height={20}
           />
         )}
       </div>

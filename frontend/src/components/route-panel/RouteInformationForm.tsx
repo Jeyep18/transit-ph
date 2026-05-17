@@ -1,28 +1,27 @@
 "use client";
 
-import { useState } from "react";
-
 interface RouteInformationFormProps {
   fromValue?: string;
   toValue?: string;
+  activeTarget?: "from" | "to" | null;
   activateLocationInput?: (target: "from" | "to") => void;
 }
 
 export default function RouteInformationForm({
   fromValue: propFrom,
   toValue: propTo,
+  activeTarget,
   activateLocationInput: propActivate,
 }: RouteInformationFormProps) {
-  const [internalFrom, setInternalFrom] = useState("");
-  const [internalTo, setInternalTo] = useState("");
+  const internalFrom = "";
+  const internalTo = "";
 
   const from = propFrom !== undefined ? propFrom : internalFrom;
   const to = propTo !== undefined ? propTo : internalTo;
-  const activate =
-    propActivate || ((target: "from" | "to") => console.log(`Activating ${target}`));
+  const activate = propActivate || (() => undefined);
 
   return (
-    <div className="bg-white rounded-[24px] p-3 shadow-2xl border border-white/50 backdrop-blur-sm">
+    <div className="animate-slideUpFade rounded-[22px] border border-white/70 bg-white/95 p-3 shadow-2xl backdrop-blur-sm">
       <p className="route-section-title mb-2 text-[#003F48]">Route Information</p>
 
       <div className="space-y-1.5">
@@ -35,11 +34,16 @@ export default function RouteInformationForm({
           </div>
           <button
             onClick={() => activate("from")}
-            className={`flex-1 rounded-xl px-4 py-1.5 text-[12px] text-left transition-all font-bold ${
-              from ? "text-stone-800 bg-stone-100" : "text-stone-400 bg-stone-50"
+            title={from || "Origin"}
+            className={`flex-1 min-w-0 overflow-hidden rounded-xl px-4 py-2 text-[12px] text-left transition-all duration-200 font-bold ${
+              activeTarget === "from"
+                ? "bg-[#CC553D]/10 text-[#CC553D] ring-2 ring-[#CC553D]/45 shadow-sm"
+                : from
+                  ? "text-stone-800 bg-stone-100"
+                  : "text-stone-400 bg-stone-50"
             }`}
           >
-            {from || "Current Location"}
+            <span className="block truncate">{from || "Origin"}</span>
           </button>
         </div>
 
@@ -52,11 +56,16 @@ export default function RouteInformationForm({
           </div>
           <button
             onClick={() => activate("to")}
-            className={`flex-1 rounded-xl px-4 py-1.5 text-[12px] text-left transition-all font-bold ${
-              to ? "text-stone-800 bg-stone-100" : "text-stone-400 bg-stone-50"
+            title={to || "Destination"}
+            className={`flex-1 min-w-0 overflow-hidden rounded-xl px-4 py-2 text-[12px] text-left transition-all duration-200 font-bold ${
+              activeTarget === "to"
+                ? "bg-[#CC553D]/10 text-[#CC553D] ring-2 ring-[#CC553D]/45 shadow-sm"
+                : to
+                  ? "text-stone-800 bg-stone-100"
+                  : "text-stone-400 bg-stone-50"
             }`}
           >
-            {to || "Destination"}
+            <span className="block truncate">{to || "Destination"}</span>
           </button>
         </div>
       </div>

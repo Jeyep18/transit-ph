@@ -1,11 +1,8 @@
 "use client";
+import Image from "next/image";
 import { useMapContext } from "@/context/MapContext";
 
-interface Props {
-  onPinPlaced?: (label: string, lat: number, lng: number) => void;
-}
-
-function PinDestination({ onPinPlaced }: Props) {
+function PinDestination() {
   const { pinningMode, setPinningMode, destinationPin } = useMapContext();
 
   const isActive = pinningMode === "destination" || !!destinationPin;
@@ -34,10 +31,12 @@ function PinDestination({ onPinPlaced }: Props) {
           ${isActive ? "bg-[#003f48]" : "bg-transparent"}
         `}
       >
-        <img
+        <Image
           src="/Icons/WhiteDestination.svg"
           className="w-5 h-5 object-contain"
           alt="Destination"
+          width={20}
+          height={20}
         />
       </div>
       {isWaiting ? "Tap map..." : "Destination"}

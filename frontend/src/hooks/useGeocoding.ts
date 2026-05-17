@@ -1,5 +1,6 @@
 "use client";
 import { useState, useCallback, useRef } from "react";
+import { nominatimSearch } from "@/lib/nominatimSearch";
 
 export interface GeoResult {
   lat: number;
@@ -24,25 +25,12 @@ export function useGeocoding() {
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const url =
-          `https://nominatim.openstreetmap.org/search` +
-          `?format=json` +
-          `&q=${encodeURIComponent(query)}` +
-          `&limit=6` +
-          `&addressdetails=1`;
-
-        const res = await fetch(url, {
-          headers: {
-            "Accept-Language": "en",
-          },
-        });
-
-        const data = await res.json();
+        const data = await nominatimSearch(query);
 
         setResults(
-          data.map((item: any) => ({
-            lat: parseFloat(item.lat),
-            lng: parseFloat(item.lon),
+          data.map((item) => ({
+            lat: item.lat,
+            lng: item.lon,
             displayName: item.display_name,
             shortName: item.display_name.split(",")[0].trim(),
           })),
