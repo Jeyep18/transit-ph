@@ -3,11 +3,17 @@ import type { StationType } from "@/types/station";
 export const STATION_TYPES: Record<StationType, string> = {
   JEEPNEY_STOP: "Jeepney Stop",
   TRICYCLE_TERMINAL: "Tricycle Terminal",
+  JEEPNEY_TERMINAL: "Jeepney Terminal",
+  BUS_TERMINAL: "Bus Terminal",
+  MIXED_TERMINAL: "Tricycle/Jeep Terminal",
 };
 
 export const STATION_TYPE_COLORS: Record<StationType, string> = {
   JEEPNEY_STOP: "#CC553D",
   TRICYCLE_TERMINAL: "#2E8B57",
+  JEEPNEY_TERMINAL: "#CC553D",
+  BUS_TERMINAL: "#7c3aed",
+  MIXED_TERMINAL: "#0891b2",
 };
 
 // Only one mode in scope — BR-TM-02

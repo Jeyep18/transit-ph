@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CircleMarker, Popup } from "react-leaflet";
 import { getStations } from "@/services/stationService";
 import type { StationListItem } from "@/types/station";
+import { useMapContext } from "@/context/MapContext";
 
 interface StationLayerProps {
   visible: boolean;
@@ -11,11 +12,14 @@ interface StationLayerProps {
 
 export default function StationLayer({ visible }: StationLayerProps) {
   const [stations, setStations] = useState<StationListItem[]>([]);
+  const { routeLegGeometries } = useMapContext();
+  const routePoints = routeLegGeometries.flatMap((leg) => leg.points);
+  const hasRoute = routePoints.length > 1;
 
   useEffect(() => {
     let canceled = false;
 
-    if (!visible) {
+    if (!visible && !hasRoute) {
       return;
     }
 
@@ -37,36 +41,80 @@ export default function StationLayer({ visible }: StationLayerProps) {
     return () => {
       canceled = true;
     };
-  }, [visible]);
+  }, [visible, hasRoute]);
 
-  if (!visible || stations.length === 0) {
+  if ((!visible && !hasRoute) || stations.length === 0) {
     return null;
   }
 
   return (
     <>
       {stations.map((station) => {
-        const color =
-          station.station_type === "JEEPNEY_STOP" ? "#f59e0b" : "#3b82f6";
-        const label =
-          station.station_type === "JEEPNEY_STOP"
-            ? "Jeepney Stop"
-            : "Tricycle Terminal";
+        const config = getStationConfig(station.station_type);
+        const isNearRoute =
+          hasRoute &&
+          routePoints.some(([lat, lng]) =>
+            distanceKm(lat, lng, station.latitude, station.longitude) <= 0.18,
+          );
+
+        if (!visible && !isNearRoute) {
+          return null;
+        }
 
         return (
           <CircleMarker
             key={station.station_id}
             center={[station.latitude, station.longitude]}
-            radius={5}
-            pathOptions={{ color, fillColor: color, fillOpacity: 0.8 }}
+            radius={isNearRoute ? 8 : 5}
+            pathOptions={{
+              color: isNearRoute ? "#111827" : config.color,
+              fillColor: config.color,
+              fillOpacity: isNearRoute ? 1 : 0.82,
+              weight: isNearRoute ? 3 : 2,
+            }}
           >
             <Popup>
               <div className="text-sm font-semibold">{station.name}</div>
-              <div className="text-xs text-slate-500">{label}</div>
+              <div className="text-xs text-slate-500">{config.label}</div>
+              {isNearRoute && (
+                <div className="mt-1 text-xs font-semibold text-[#CC553D]">
+                  Near this route
+                </div>
+              )}
             </Popup>
           </CircleMarker>
         );
       })}
     </>
   );
+}
+
+function getStationConfig(type: StationListItem["station_type"]) {
+  switch (type) {
+    case "JEEPNEY_STOP":
+      return { color: "#f59e0b", label: "Jeepney Stop" };
+    case "JEEPNEY_TERMINAL":
+      return { color: "#CC553D", label: "Jeepney Terminal" };
+    case "BUS_TERMINAL":
+      return { color: "#7c3aed", label: "Bus Terminal" };
+    case "MIXED_TERMINAL":
+      return { color: "#0891b2", label: "Tricycle/Jeep Terminal" };
+    case "TRICYCLE_TERMINAL":
+    default:
+      return { color: "#3b82f6", label: "Tricycle Terminal" };
+  }
+}
+
+function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const earthRadiusKm = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toRad(value: number) {
+  return value * (Math.PI / 180);
 }

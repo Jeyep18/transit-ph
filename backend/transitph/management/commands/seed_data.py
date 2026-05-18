@@ -125,6 +125,19 @@ class Command(BaseCommand):
             # Tricycle terminals (connection advisory only)
             ('Concepcion Grande Terminal', 'TRICYCLE_TERMINAL', 13.6340, 123.1870, 'Concepcion Grande, Naga City'),
             ('San Felipe Terminal', 'TRICYCLE_TERMINAL', 13.6100, 123.2020, 'San Felipe, Naga City'),
+            ('Ateneo Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.630258, 123.185606, 'Naga City terminal point'),
+            ('Gen. Luna St. Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.624534, 123.185006, 'Naga City terminal point'),
+            ('Mabolo Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.614076, 123.182542, 'Naga City terminal point'),
+            ('Robinsons Place Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.615498, 123.192786, 'Naga City terminal point'),
+            ('Eastbound Van/Jeep Terminal', 'JEEPNEY_TERMINAL', 13.618733, 123.193513, 'Naga City terminal point'),
+            ('SM City Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.620371, 123.189413, 'Naga City terminal point'),
+            ('Abella Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.622713, 123.183579, 'Naga City terminal point'),
+            ('Greenland Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.620777, 123.203845, 'Naga City terminal point'),
+            ('Naga City Science Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.627352, 123.204935, 'Naga City terminal point'),
+            ('Balatas Rd. Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.631555, 123.196936, 'Naga City terminal point'),
+            ('LCC CBD Tricycle Terminal', 'TRICYCLE_TERMINAL', 13.619658, 123.189029, 'Naga City terminal point'),
+            ('Bicol Central Bus Station', 'BUS_TERMINAL', 13.619215, 123.189704, 'Naga City terminal point'),
+            ("Naga City People's Market Tricycle/Jeep Terminal", 'MIXED_TERMINAL', 13.620581, 123.183772, 'Naga City terminal point'),
         ]
 
         stations = {}
@@ -248,6 +261,7 @@ class Command(BaseCommand):
                 'code': 'PANGANIBAN-MAGSAYSAY',
                 'name': 'Panganiban to Magsaysay Loop',
                 'description': 'Loop traced from the provided Panganiban-Magsaysay reference map.',
+                'closed': True,
                 'nodes': [
                     ('Panganiban-Dinaga Bridge', 13.623900, 123.190100),
                     ('Panganiban west stop', 13.623720, 123.192050),
@@ -267,6 +281,7 @@ class Command(BaseCommand):
                 'code': 'MAGSAYSAY-DIVERSION',
                 'name': 'Magsaysay - Diversion Loop',
                 'description': 'Loop created from supplied Magsaysay-Diversion coordinates.',
+                'closed': True,
                 'nodes': [
                     ('Magsaysay-Diversion node 01', 13.620864, 123.200958),
                     ('Magsaysay-Diversion node 02', 13.617632, 123.197162),
@@ -289,6 +304,38 @@ class Command(BaseCommand):
                     ('Magsaysay-Diversion node 19', 13.631376, 123.196804),
                     ('Magsaysay-Diversion node 20', 13.626233, 123.200927),
                     ('Magsaysay-Diversion node 21', 13.620978, 123.200949),
+                ],
+            },
+            {
+                'code': 'PANGANIBAN-CONCEPCION',
+                'name': 'Panganiban - Concepcion Loop',
+                'description': 'Bidirectional jeepney line along Panganiban-Concepcion Road.',
+                'closed': False,
+                'nodes': [
+                    ('Panganiban-Concepcion node 01', 13.623127, 123.185956),
+                    ('Panganiban-Concepcion node 02', 13.622923, 123.187537),
+                    ('Panganiban-Concepcion node 03', 13.622584, 123.189876),
+                    ('Panganiban-Concepcion node 04', 13.622183, 123.192902),
+                    ('Panganiban-Concepcion node 05', 13.621911, 123.194744),
+                    ('Panganiban-Concepcion node 06', 13.621415, 123.198290),
+                    ('Panganiban-Concepcion node 07', 13.621030, 123.200707),
+                    ('Panganiban-Concepcion node 08', 13.620931, 123.201417),
+                    ('Panganiban-Concepcion node 09', 13.620941, 123.203795),
+                    ('Panganiban-Concepcion node 10', 13.621119, 123.206228),
+                    ('Panganiban-Concepcion node 11', 13.621166, 123.207627),
+                    ('Panganiban-Concepcion node 12', 13.620914, 123.209500),
+                    ('Panganiban-Concepcion node 13', 13.621020, 123.211564),
+                    ('Panganiban-Concepcion node 14', 13.621807, 123.213517),
+                    ('Panganiban-Concepcion node 15', 13.621698, 123.215073),
+                    ('Panganiban-Concepcion node 16', 13.621562, 123.217552),
+                    ('Panganiban-Concepcion node 17', 13.620905, 123.219686),
+                    ('Panganiban-Concepcion node 18', 13.619479, 123.221373),
+                    ('Panganiban-Concepcion node 19', 13.617793, 123.225007),
+                    ('Panganiban-Concepcion node 20', 13.616839, 123.227384),
+                    ('Panganiban-Concepcion node 21', 13.617734, 123.231332),
+                    ('Panganiban-Concepcion node 22', 13.618136, 123.233808),
+                    ('Panganiban-Concepcion node 23', 13.617308, 123.237466),
+                    ('Panganiban-Concepcion node 24', 13.616186, 123.241532),
                 ],
             },
         ]
@@ -314,7 +361,9 @@ class Command(BaseCommand):
                 updated_by=admin,
             )
 
-            loop_pairs = list(zip(graph_nodes, graph_nodes[1:])) + [(graph_nodes[-1], graph_nodes[0])]
+            loop_pairs = list(zip(graph_nodes, graph_nodes[1:]))
+            if loop_data.get('closed', True):
+                loop_pairs += [(graph_nodes[-1], graph_nodes[0])]
             for idx, (from_node, to_node) in enumerate(loop_pairs, start=1):
                 distance_km = haversine_km(
                     from_node.latitude,

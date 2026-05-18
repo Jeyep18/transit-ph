@@ -1,6 +1,11 @@
 // ─── Station Types ─────────────────────────────────────────────────────────
 
-export type StationType = "JEEPNEY_STOP" | "TRICYCLE_TERMINAL";
+export type StationType =
+  | "JEEPNEY_STOP"
+  | "TRICYCLE_TERMINAL"
+  | "JEEPNEY_TERMINAL"
+  | "BUS_TERMINAL"
+  | "MIXED_TERMINAL";
 
 export interface Station {
   station_id: number;

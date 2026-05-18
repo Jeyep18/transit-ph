@@ -101,7 +101,10 @@ class TransportMode(models.Model):
 class Station(models.Model): 
     STATION_TYPES = [
         ('JEEPNEY_STOP', 'Jeepney Stop'),  
-        ('TRICYCLE_TERMINAL', 'Tricycle Terminal'),  
+        ('TRICYCLE_TERMINAL', 'Tricycle Terminal'),
+        ('JEEPNEY_TERMINAL', 'Jeepney Terminal'),
+        ('BUS_TERMINAL', 'Bus Terminal'),
+        ('MIXED_TERMINAL', 'Mixed Public Transport Terminal'),
     ]
     
     station_id = models.BigAutoField(primary_key=True)
