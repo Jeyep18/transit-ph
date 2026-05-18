@@ -533,20 +533,6 @@ def _edge_geometry(step: EdgeStep) -> tuple[list[dict], float, int, bool]:
         if edge.travel_time_min is not None
         else max(1, math.ceil((distance or straight_distance) / AVERAGE_JEEPNEY_KPH * 60))
     )
-
-    # Fast path: use pre-computed OSRM geometry stored in the database
-    if edge.road_geometry:
-        enriched = [first_payload, second_payload]
-        for pt in edge.road_geometry[1:-1]:
-            enriched.append({
-                'latitude': pt['latitude'],
-                'longitude': pt['longitude'],
-                'name': None,
-                'node_id': None,
-            })
-        enriched.append(second_payload)
-        return enriched, distance or round(straight_distance, 3), duration, False
-
     if not USE_EXTERNAL_ROAD_GEOMETRY:
         return [first_payload, second_payload], distance or round(straight_distance, 3), duration, True
 
