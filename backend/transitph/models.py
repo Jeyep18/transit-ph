@@ -413,6 +413,11 @@ class GraphEdge(models.Model):
     )
     is_bidirectional = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
+    road_geometry = models.JSONField(
+        null=True,
+        blank=True,
+        help_text='Pre-computed OSRM road-following geometry: [{"latitude": ..., "longitude": ...}, ...]',
+    )
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
