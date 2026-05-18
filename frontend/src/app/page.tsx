@@ -36,7 +36,7 @@ function HomeContent() {
     search,
     reset: resetRoutes,
   } = useRouteSearch();
-  const [activeFilter, setActiveFilter] = useState<"routes" | null>(null);
+  const [activeFilter, setActiveFilter] = useState<"stations" | "routes" | null>(null);
 
   const {
     originPin,
@@ -79,11 +79,12 @@ function HomeContent() {
 
   const handleLocationSelect = (
     selection: {
-      source: "nominatim";
+      source: "station" | "nominatim";
       label: string;
       displayName: string;
       lat: number;
       lng: number;
+      stationId?: number;
     },
   ) => {
     if (activeInputTarget === "from") {
@@ -92,6 +93,7 @@ function HomeContent() {
         lat: selection.lat,
         lng: selection.lng,
         label: selection.label,
+        stationId: selection.stationId,
       });
       flyTo(selection.lat, selection.lng);
     } else {
@@ -100,13 +102,14 @@ function HomeContent() {
         lat: selection.lat,
         lng: selection.lng,
         label: selection.label,
+        stationId: selection.stationId,
       });
       flyTo(selection.lat, selection.lng);
     }
     setActiveInputTarget(null);
   };
 
-  const showStations = false;
+  const showStations = activeFilter === "stations";
   const showLoops = activeFilter === "routes";
   const canSearch =
     !!originPin &&
@@ -134,13 +137,20 @@ function HomeContent() {
     setHasSearched(true);
     setSlideCardOpen(true);
 
-    const results = await search({
-      origin_lat: originPin.lat,
-      origin_lng: originPin.lng,
-      dest_lat: destinationPin.lat,
-      dest_lng: destinationPin.lng,
-      sort_by: "fare",
-    });
+    const results =
+      originPin.stationId && destinationPin.stationId
+        ? await search({
+            origin_station_id: originPin.stationId,
+            destination_station_id: destinationPin.stationId,
+            sort_by: "fare",
+          })
+        : await search({
+            origin_lat: originPin.lat,
+            origin_lng: originPin.lng,
+            dest_lat: destinationPin.lat,
+            dest_lng: destinationPin.lng,
+            sort_by: "fare",
+          });
 
     if (results[0]) {
       displayRouteOnMap(results[0], 0);
@@ -216,8 +226,8 @@ function HomeContent() {
             <div className="flex justify-end mt-3">
               <StationsRouteToggle
                 activeFilter={activeFilter}
-                onToggle={() =>
-                  setActiveFilter((prev) => (prev === "routes" ? null : "routes"))
+                onToggle={(filter) =>
+                  setActiveFilter((prev) => (prev === filter ? null : filter))
                 }
               />
             </div>

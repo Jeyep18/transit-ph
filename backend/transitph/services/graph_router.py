@@ -36,6 +36,7 @@ WALKING_MAX_KM = 0.5
 LOOP_TRANSFER_MAX_KM = 2.5
 OSRM_ROUTE_URL = 'https://router.project-osrm.org/route/v1'
 OSRM_USER_AGENT = 'TransitPH/1.0 (local development; contact: admin@transitph.local)'
+USE_EXTERNAL_ROAD_GEOMETRY = False
 
 
 @dataclass(frozen=True)
@@ -263,8 +264,13 @@ def _road_route_cached(
     }
 
 
+@lru_cache(maxsize=1)
+def _active_nodes() -> tuple[GraphNode, ...]:
+    return tuple(GraphNode.objects.filter(is_active=True))
+
+
 def nearest_node(lat: float, lng: float) -> GraphNode | None:
-    nodes = list(GraphNode.objects.filter(is_active=True))
+    nodes = _active_nodes()
     if not nodes:
         return None
     return min(
@@ -274,7 +280,7 @@ def nearest_node(lat: float, lng: float) -> GraphNode | None:
 
 
 def nearest_nodes(lat: float, lng: float, limit: int = 8) -> list[GraphNode]:
-    nodes = list(GraphNode.objects.filter(is_active=True))
+    nodes = _active_nodes()
     return sorted(
         nodes,
         key=lambda node: haversine_km(lat, lng, node.latitude, node.longitude),
@@ -304,6 +310,7 @@ def _node_loop_codes() -> dict[int, set[str]]:
     return node_codes
 
 
+@lru_cache(maxsize=1)
 def _build_adjacency() -> dict[int, list[tuple[int, float, EdgeStep]]]:
     loop_tags = _loop_tag_map()
     adjacency: dict[int, list[tuple[int, float, EdgeStep]]] = defaultdict(list)
@@ -342,7 +349,7 @@ def _build_adjacency() -> dict[int, list[tuple[int, float, EdgeStep]]]:
             ))
 
     node_codes = _node_loop_codes()
-    nodes = list(GraphNode.objects.filter(is_active=True))
+    nodes = _active_nodes()
     for index, from_node in enumerate(nodes):
         from_codes = node_codes.get(from_node.graph_node_id, set())
         if not from_codes:
@@ -476,6 +483,21 @@ def _edge_geometry(step: EdgeStep) -> tuple[list[dict], float, int, bool]:
     if step.edge is None:
         first_payload = _node_payload(GraphNode.objects.get(pk=step.from_node_id))
         second_payload = _node_payload(GraphNode.objects.get(pk=step.to_node_id))
+        distance = haversine_km(
+            first_payload['latitude'],
+            first_payload['longitude'],
+            second_payload['latitude'],
+            second_payload['longitude'],
+        )
+        if not USE_EXTERNAL_ROAD_GEOMETRY:
+            speed = AVERAGE_WALKING_KPH if step.mode == 'WALKING' else AVERAGE_TRICYCLE_KPH
+            return (
+                [first_payload, second_payload],
+                round(distance, 3),
+                max(1, math.ceil(distance / speed * 60)),
+                True,
+            )
+
         profile = 'foot' if step.mode == 'WALKING' else 'driving'
         road_route = _road_route(profile, first_payload, second_payload)
         if road_route:
@@ -486,12 +508,6 @@ def _edge_geometry(step: EdgeStep) -> tuple[list[dict], float, int, bool]:
                 False,
             )
 
-        distance = haversine_km(
-            first_payload['latitude'],
-            first_payload['longitude'],
-            second_payload['latitude'],
-            second_payload['longitude'],
-        )
         speed = AVERAGE_WALKING_KPH if step.mode == 'WALKING' else AVERAGE_TRICYCLE_KPH
         return (
             [first_payload, second_payload],
@@ -511,6 +527,14 @@ def _edge_geometry(step: EdgeStep) -> tuple[list[dict], float, int, bool]:
         second_payload['latitude'],
         second_payload['longitude'],
     )
+    distance = float(edge.distance_km or 0)
+    duration = (
+        math.ceil(float(edge.travel_time_min))
+        if edge.travel_time_min is not None
+        else max(1, math.ceil((distance or straight_distance) / AVERAGE_JEEPNEY_KPH * 60))
+    )
+    if not USE_EXTERNAL_ROAD_GEOMETRY:
+        return [first_payload, second_payload], distance or round(straight_distance, 3), duration, True
 
     road_route = _road_route('driving', first_payload, second_payload)
     if step.mode != 'JEEPNEY' or _road_route_stays_on_corridor(
@@ -526,12 +550,6 @@ def _edge_geometry(step: EdgeStep) -> tuple[list[dict], float, int, bool]:
             False,
         ) if road_route else ([first_payload, second_payload], round(straight_distance, 3), max(1, math.ceil(straight_distance / AVERAGE_JEEPNEY_KPH * 60)), True)
 
-    distance = float(edge.distance_km or 0)
-    duration = (
-        math.ceil(float(edge.travel_time_min))
-        if edge.travel_time_min is not None
-        else max(1, math.ceil(distance / AVERAGE_JEEPNEY_KPH * 60))
-    )
     return [first_payload, second_payload], distance, duration, True
 
 
@@ -554,12 +572,8 @@ def _connector_leg(label: str, from_point: dict, to_point: dict) -> dict | None:
     if straight_distance < 0.05:
         return None
 
-    walking_route = _road_route('foot', from_point, to_point)
-    route_distance = (
-        walking_route['distance_km']
-        if walking_route
-        else round(straight_distance, 3)
-    )
+    walking_route = _road_route('foot', from_point, to_point) if USE_EXTERNAL_ROAD_GEOMETRY else None
+    route_distance = walking_route['distance_km'] if walking_route else round(straight_distance, 3)
     is_walking = route_distance <= WALKING_MAX_KM
 
     if is_walking:
@@ -572,7 +586,11 @@ def _connector_leg(label: str, from_point: dict, to_point: dict) -> dict | None:
         mode = 'TRICYCLE'
         fare = _tricycle_fare(route_distance)
         speed = AVERAGE_TRICYCLE_KPH
-        route = _road_route('driving', from_point, to_point) or walking_route
+        route = (
+            _road_route('driving', from_point, to_point)
+            if USE_EXTERNAL_ROAD_GEOMETRY
+            else None
+        ) or walking_route
         instruction = label.replace('Walk/Tricycle', 'Take a tricycle')
 
     distance = route['distance_km'] if route else route_distance

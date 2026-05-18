@@ -52,6 +52,26 @@ def _estimate_duration_min(route: Route, leg_distance_km: float) -> int | None:
     return max(1, math.ceil(route.estimated_duration_min * leg_distance_km / total_distance))
 
 
+def _sequence_slice(
+    sequence: list[RouteStation],
+    start_order: int,
+    end_order: int,
+) -> list[RouteStation]:
+    return [
+        rs
+        for rs in sequence
+        if start_order <= rs.sequence_order <= end_order
+    ]
+
+
+def _distance_between(stations: list[RouteStation], start_order: int) -> float:
+    return sum(
+        float(rs.distance_from_prev_km or 0)
+        for rs in stations
+        if rs.sequence_order > start_order
+    )
+
+
 def find_routes(origin_station_id: int, destination_station_id: int,
                 transport_filter: list[str] | None = None) -> list[dict]:
     """
@@ -79,12 +99,36 @@ def find_routes(origin_station_id: int, destination_station_id: int,
 
     # Build a lookup: station_id → list of (route, route_station) pairs
     station_route_map = {}
+    route_sequences = {}
+    route_total_distances = {}
     for route in active_routes:
         route_sequence = _route_sequence(route)
         if len(route_sequence) < 2:
             continue
+        route_sequences[route.route_id] = route_sequence
+        route_total_distances[route.route_id] = sum(
+            float(rs.distance_from_prev_km or 0)
+            for rs in route_sequence
+        )
         for rs in route_sequence:
             station_route_map.setdefault(rs.station_id, []).append((route, rs))
+
+    fare_matrices = {}
+
+    def fare_matrix_for(route: Route):
+        if route.transport_mode_id not in fare_matrices:
+            fare_matrices[route.transport_mode_id] = get_active_fare_matrix(
+                route.transport_mode_id,
+            )
+        return fare_matrices[route.transport_mode_id]
+
+    def estimate_duration(route: Route, leg_distance_km: float) -> int | None:
+        if not route.estimated_duration_min:
+            return None
+        total_distance = route_total_distances.get(route.route_id, 0)
+        if total_distance <= 0:
+            return route.estimated_duration_min
+        return max(1, math.ceil(route.estimated_duration_min * leg_distance_km / total_distance))
 
     # ─── Direct Routes ─────────────────────────────────────────────────
     # Find routes that contain both origin and destination stations
@@ -119,19 +163,13 @@ def find_routes(origin_station_id: int, destination_station_id: int,
             continue
 
         # Calculate distance along the route between the two stations
-        route_stations = list(
-            RouteStation.objects.filter(
-                route=route_obj,
-                sequence_order__gte=origin_rs.sequence_order,
-                sequence_order__lte=dest_rs.sequence_order,
-            ).order_by('sequence_order')
+        route_stations = _sequence_slice(
+            route_sequences[route_obj.route_id],
+            origin_rs.sequence_order,
+            dest_rs.sequence_order,
         )
 
-        distance_km = sum(
-            float(rs.distance_from_prev_km or 0)
-            for rs in route_stations
-            if rs.sequence_order > origin_rs.sequence_order
-        )
+        distance_km = _distance_between(route_stations, origin_rs.sequence_order)
 
         # If no distance data, use Haversine as fallback
         is_estimated = False
@@ -145,9 +183,9 @@ def find_routes(origin_station_id: int, destination_station_id: int,
             is_estimated = True
 
         # Compute fare
-        fm = get_active_fare_matrix(route_obj.transport_mode_id)
+        fm = fare_matrix_for(route_obj)
         fare = float(compute_fare(distance_km, fm)) if fm else None
-        duration_min = _estimate_duration_min(route_obj, distance_km)
+        duration_min = estimate_duration(route_obj, distance_km)
 
         # Build stop sequence for this leg
         stops = []
@@ -214,18 +252,12 @@ def find_routes(origin_station_id: int, destination_station_id: int,
                     continue
 
                 # ── Leg 1: origin → transfer on route A ──
-                leg1_stations = list(
-                    RouteStation.objects.filter(
-                        route=r_origin,
-                        sequence_order__gte=rs_origin.sequence_order,
-                        sequence_order__lte=transfer_rs_a.sequence_order,
-                    ).order_by('sequence_order')
+                leg1_stations = _sequence_slice(
+                    route_sequences[r_origin.route_id],
+                    rs_origin.sequence_order,
+                    transfer_rs_a.sequence_order,
                 )
-                dist_1 = sum(
-                    float(rs.distance_from_prev_km or 0)
-                    for rs in leg1_stations
-                    if rs.sequence_order > rs_origin.sequence_order
-                )
+                dist_1 = _distance_between(leg1_stations, rs_origin.sequence_order)
                 is_est_1 = False
                 if dist_1 == 0:
                     dist_1 = haversine_km(
@@ -235,18 +267,12 @@ def find_routes(origin_station_id: int, destination_station_id: int,
                     is_est_1 = True
 
                 # ── Leg 2: transfer → destination on route B ──
-                leg2_stations = list(
-                    RouteStation.objects.filter(
-                        route=r_dest,
-                        sequence_order__gte=transfer_rs_b.sequence_order,
-                        sequence_order__lte=rs_dest.sequence_order,
-                    ).order_by('sequence_order')
+                leg2_stations = _sequence_slice(
+                    route_sequences[r_dest.route_id],
+                    transfer_rs_b.sequence_order,
+                    rs_dest.sequence_order,
                 )
-                dist_2 = sum(
-                    float(rs.distance_from_prev_km or 0)
-                    for rs in leg2_stations
-                    if rs.sequence_order > transfer_rs_b.sequence_order
-                )
+                dist_2 = _distance_between(leg2_stations, transfer_rs_b.sequence_order)
                 is_est_2 = False
                 if dist_2 == 0:
                     dist_2 = haversine_km(
@@ -256,12 +282,12 @@ def find_routes(origin_station_id: int, destination_station_id: int,
                     is_est_2 = True
 
                 # Compute fares
-                fm1 = get_active_fare_matrix(r_origin.transport_mode_id)
-                fm2 = get_active_fare_matrix(r_dest.transport_mode_id)
+                fm1 = fare_matrix_for(r_origin)
+                fm2 = fare_matrix_for(r_dest)
                 fare_1 = float(compute_fare(dist_1, fm1)) if fm1 else None
                 fare_2 = float(compute_fare(dist_2, fm2)) if fm2 else None
-                duration_1 = _estimate_duration_min(r_origin, dist_1)
-                duration_2 = _estimate_duration_min(r_dest, dist_2)
+                duration_1 = estimate_duration(r_origin, dist_1)
+                duration_2 = estimate_duration(r_dest, dist_2)
 
                 total_fare = None
                 if fare_1 is not None and fare_2 is not None:

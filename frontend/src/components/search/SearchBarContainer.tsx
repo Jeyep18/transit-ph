@@ -3,24 +3,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMapContext } from "@/context/MapContext";
 import { nominatimSearch } from "@/lib/nominatimSearch";
+import { searchStations } from "@/services/stationService";
 
 interface Props {
   activeInputTarget: string | null;
   setActiveInputTarget: (val: string | null) => void;
   onLocationSelect: (selection: {
-    source: "nominatim";
+    source: "station" | "nominatim";
     label: string;
     displayName: string;
     lat: number;
     lng: number;
+    stationId?: number;
   }) => void;
   currentValue?: string;
 }
 
 type SearchSuggestion = {
+  source: "station" | "nominatim";
   display_name: string;
   lat: number;
   lon: number;
+  station_id?: number;
 };
 
 export default function SearchBarContainer({
@@ -46,7 +50,9 @@ export default function SearchBarContainer({
   useEffect(() => {
     if (!activeInputTarget) return;
     window.setTimeout(() => setInputValue(currentValue), 0);
-    window.setTimeout(() => inputRef.current?.focus(), 50);
+    inputRef.current?.focus({ preventScroll: false });
+    window.requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: false }));
+    window.setTimeout(() => inputRef.current?.focus({ preventScroll: false }), 80);
   }, [activeInputTarget, currentValue]);
 
   useEffect(() => {
@@ -64,14 +70,36 @@ export default function SearchBarContainer({
     searchDebounceRef.current = window.setTimeout(() => {
       if (canceled) return;
       setLoading(true);
-      nominatimSearch(query)
-        .then((results) => {
+      searchStations(query)
+        .then(async (stationResults) => {
           if (canceled) return;
+          if (stationResults.length > 0) {
+            return stationResults.map((station) => ({
+              source: "station" as const,
+              display_name: station.name,
+              lat: station.latitude,
+              lon: station.longitude,
+              station_id: station.station_id,
+            }));
+          }
+
+          const osmResults = await nominatimSearch(query);
+          return osmResults.map((result) => ({
+            source: "nominatim" as const,
+            display_name: result.display_name,
+            lat: result.lat,
+            lon: result.lon,
+          }));
+        })
+        .then((results) => {
+          if (canceled || !results) return;
           setSuggestions(
             results.map((result) => ({
+              source: result.source,
               display_name: result.display_name,
               lat: result.lat,
               lon: result.lon,
+              station_id: "station_id" in result ? result.station_id : undefined,
             })),
           );
         })
@@ -103,11 +131,12 @@ export default function SearchBarContainer({
 
   const handleSelect = (item: SearchSuggestion) => {
     onLocationSelect({
-      source: "nominatim",
+      source: item.source,
       label: item.display_name,
       displayName: item.display_name,
       lat: item.lat,
       lng: item.lon,
+      stationId: item.station_id,
     });
     flyTo(item.lat, item.lon);
     handleClose();
@@ -123,6 +152,8 @@ export default function SearchBarContainer({
   return (
     <div ref={wrapRef} className="relative">
       <div
+        onPointerDown={() => inputRef.current?.focus({ preventScroll: false })}
+        onClick={() => inputRef.current?.focus({ preventScroll: false })}
         className={`
           flex items-center bg-white/95 rounded-full px-4 py-3 gap-2
           shadow-lg transition-all duration-200 backdrop-blur-sm
@@ -146,6 +177,8 @@ export default function SearchBarContainer({
         <input
           ref={inputRef}
           type="text"
+          inputMode="search"
+          enterKeyHint="search"
           value={inputValue}
           onChange={(event) => handleSearchTextChange(event.target.value)}
           onInput={(event) =>
@@ -243,7 +276,7 @@ export default function SearchBarContainer({
                   {item.display_name}
                 </p>
                 <p className="text-xs text-gray-400 truncate mt-0.5">
-                  OpenStreetMap
+                  {item.source === "station" ? "TransitPH station" : "OpenStreetMap"}
                 </p>
               </div>
             </button>

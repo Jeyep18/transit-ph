@@ -6,6 +6,7 @@ export interface PinCoords {
   lat: number;
   lng: number;
   label: string;
+  stationId?: number;
 }
 
 export interface RouteLegGeometry {
