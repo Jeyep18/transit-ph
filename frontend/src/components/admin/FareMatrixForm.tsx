@@ -74,10 +74,10 @@ export default function FareMatrixForm() {
   return (
     <div className="bg-white flex flex-col h-[619px] w-[357px]">
 
-      <div className="flex justify-between items-center bg-green-950 text-white font-bold p-4">
+      <div className="flex justify-between items-center bg-[#003F48] text-white font-bold p-4">
       <h2>Fare Matrix</h2>
         <select
-          className="border p-2 w-30 bg-green-950 text-white rounded-sm"
+          className="border p-2 w-30 bg-[#003F48] text-white rounded-sm"
           value={view}
           onChange={(e) => {
             const newView = e.target.value as "jeep" | "tricycle" | "ejeep";
@@ -94,11 +94,11 @@ export default function FareMatrixForm() {
       
       {/* RULES TABLE */}
       <div className="p-3">
-        <table className="w-full border border-green-950">
+        <table className="w-full border border-[#003F48]">
           <caption className="text-center font-extrabold text-orange-600 mb-2">
               {view.toUpperCase()} FARE RULES
             </caption>
-          <thead className="bg-green-950 text-white">
+          <thead className="bg-[#003F48] text-white">
             <tr>
               <th className="p-2">Field</th>
               <th className="p-2">Value</th>
@@ -182,7 +182,7 @@ export default function FareMatrixForm() {
           </button>
         ) : (
           <>
-            <button onClick={handleSave} className="bg-green-600 text-white p-2 rounded-sm">
+            <button onClick={handleSave} className="bg-[#4B9E7A] text-white p-2 rounded-sm">
               Save
             </button>
             <button onClick={handleCancel} className="bg-gray-400 text-white p-2 rounded-sm">
@@ -194,9 +194,9 @@ export default function FareMatrixForm() {
 
       {/* FARE PREVIEW TABLE */}
       <div className="p-4">
-        <table className="w-full border border-green-950">
+        <table className="w-full border border-[#003F48]">
 
-          <thead className="bg-green-950 text-white">
+          <thead className="bg-[#003F48] text-white">
             <tr>
               <th className="p-2">KM</th>
               <th className="p-2">Fare</th>
